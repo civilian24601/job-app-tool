@@ -2,28 +2,27 @@ const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const path = require('path');
+const userRoutes = require('./routes/users'); // Ensure the path is correct
 
-// Load environment variables from .env file in the root directory
+// Load environment variables from .env file
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
+
+// Middleware
 app.use(express.json());
 
+// Route Middleware
+app.use('/api/users', userRoutes);
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('Connected to MongoDB'))
+.catch(err => console.error('MongoDB connection error: ', err));
+
+// Start the server
 const PORT = process.env.PORT || 5001;
-const MONGO_URI = process.env.MONGO_URI;
-
-console.log("MONGO_URI:", MONGO_URI);
-
-
-if (!MONGO_URI) {
-  console.error("Error: MONGO_URI is not defined in .env file");
-  process.exit(1);
-}
-
-mongoose.connect(MONGO_URI)
-  .then(() => console.log("MongoDB connected successfully"))
-  .catch(err => console.log("MongoDB connection error: ", err));
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

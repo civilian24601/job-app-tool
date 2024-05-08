@@ -44,6 +44,7 @@ router.post('/login', async (req, res) => {
 router.get('/profile', verify, async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select('-password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(user);
   } catch (error) {
     res.status(500).send('Error fetching user profile');
@@ -53,11 +54,15 @@ router.get('/profile', verify, async (req, res) => {
 // PUT route to update user profile (Protected)
 router.put('/profile', verify, async (req, res) => {
   try {
-    const updatedUser = await User.findByIdAndUpdate(
-      req.user._id,
-      { $set: req.body },
-      { new: true }
-    ).select('-password');
+    const { name, email, resume } = req.body;
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    user.name = name || user.name;
+    user.email = email || user.email;
+    if (resume) user.resume = resume; // Assuming resume is a URL or text
+
+    const updatedUser = await user.save();
     res.json(updatedUser);
   } catch (error) {
     res.status(500).send('Error updating user profile');
