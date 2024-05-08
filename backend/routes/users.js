@@ -19,6 +19,7 @@ router.post('/register', async (req, res) => {
     const savedUser = await newUser.save();
     res.status(201).json({ user: { name: savedUser.name, email: savedUser.email } });
   } catch (error) {
+    console.error('Error registering new user:', error);
     res.status(500).json({ error: 'Error registering new user' });
   }
 });
@@ -36,6 +37,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign({ _id: user._id }, process.env.TOKEN_SECRET, { expiresIn: '1h' });
     res.header('auth-token', token).send({ message: 'Logged in successfully', token });
   } catch (error) {
+    console.error('Error logging in user:', error);
     res.status(500).json({ error: 'Error logging in user' });
   }
 });
@@ -47,6 +49,7 @@ router.get('/profile', verify, async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(user);
   } catch (error) {
+    console.error('Error fetching user profile:', error);
     res.status(500).send('Error fetching user profile');
   }
 });
@@ -65,6 +68,7 @@ router.put('/profile', verify, async (req, res) => {
     const updatedUser = await user.save();
     res.json(updatedUser);
   } catch (error) {
+    console.error('Error updating user profile:', error);
     res.status(500).send('Error updating user profile');
   }
 });
