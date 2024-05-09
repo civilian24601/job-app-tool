@@ -80,4 +80,22 @@ router.put('/profile', verify, async (req, res) => {
   }
 });
 
+// GET route to fetch user documents (Protected)
+router.get('/documents', verify, async (req, res) => {
+    try {
+      const user = await User.findById(req.user._id).select('documents');
+      if (!user) return res.status(404).send('User not found');
+  
+      const categorizedDocuments = user.documents.reduce((acc, doc) => {
+        if (!acc[doc.category]) acc[doc.category] = { category: doc.category, files: [] };
+        acc[doc.category].files.push(doc);
+        return acc;
+      }, {});
+  
+      res.json(Object.values(categorizedDocuments));
+    } catch (error) {
+      res.status(500).send('Error fetching user documents');
+    }
+  });
+
 module.exports = router;

@@ -1,80 +1,64 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
+const fs = require('fs');
+const path = require('path');
+const User = require('../models/User'); // Ensure the path is correct
+const verify = require('../middleware/verifyToken'); // Import the verifyToken middleware
+const { analyzeDocuments } = require('../utils/gptUtils'); // Utility for GPT-4 analysis
+
 const router = express.Router();
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
-  },
-});
-
+// Setup multer for file uploads
+const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-// Helper function to parse PDF resumes
-const parsePdf = async (filePath) => {
-  const dataBuffer = fs.readFileSync(filePath);
-  const pdfData = await pdfParse(dataBuffer);
-  return pdfData.text;
-};
-
-// Helper function to parse DOCX resumes
-const parseDocx = async (filePath) => {
-  const dataBuffer = fs.readFileSync(filePath);
-  const result = await mammoth.extractRawText({ buffer: dataBuffer });
-  return result.value;
-};
-
-// Example parsing function to extract name and email from text
-const parseResume = (text) => {
-  const lines = text.split('\n');
-  let name = '';
-  let email = '';
-
-  lines.forEach(line => {
-    // Basic name extraction (assuming the name is on the first line)
-    if (!name) {
-      name = line.trim();
-    }
-
-    // Basic email extraction
-    const emailMatch = line.match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
-    if (emailMatch) {
-      email = emailMatch[0];
-    }
-  });
-
-  return { name, email };
-};
-
-// POST route for uploading and parsing a resume
-router.post('/upload', upload.single('resume'), async (req, res) => {
+// POST route to upload and parse documents
+router.post('/upload', verify, upload.array('files', 10), async (req, res) => {
   try {
-    const filePath = req.file.path;
-    const fileExtension = path.extname(filePath).toLowerCase();
-    let extractedText = '';
+    const userId = req.user._id; // Ensure the user is authenticated and req.user is populated
+    const user = await User.findById(userId);
 
-    if (fileExtension === '.pdf') {
-      extractedText = await parsePdf(filePath);
-    } else if (fileExtension === '.docx') {
-      extractedText = await parseDocx(filePath);
-    } else {
-      return res.status(400).json({ error: 'Unsupported file format' });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
     }
 
-    // Parse the resume text
-    const parsedData = parseResume(extractedText);
+    const results = await Promise.all(req.files.map(async (file) => {
+      let text = '';
 
-    res.status(200).json({ message: 'File uploaded and parsed successfully', parsedData });
+      if (file.mimetype === 'application/pdf') {
+        const data = await pdfParse(file.buffer);
+        text = data.text;
+      } else if (file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        const result = await mammoth.extractRawText({ buffer: file.buffer });
+        text = result.value;
+      } else if (file.mimetype === 'text/plain') {
+        text = file.buffer.toString('utf-8');
+      } else {
+        text = 'Unsupported file type';
+      }
+
+      user.documents.push({
+        filename: file.originalname,
+        contentType: file.mimetype,
+        data: file.buffer,
+        text: text,
+        category: 'General', // You can modify this to handle different categories
+      });
+
+      return { filename: file.originalname, text };
+    }));
+
+    await user.save();
+
+    // Analyze documents with GPT-4
+    const analysis = await analyzeDocuments(user.documents);
+
+    res.status(200).json({ results, analysis });
   } catch (error) {
-    res.status(500).json({ error: 'Error uploading and parsing file' });
+    console.error('Error uploading files:', error);
+    res.status(500).json({ error: 'Error uploading files' });
   }
 });
 
